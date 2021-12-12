@@ -2,6 +2,8 @@
 const express= require('express')
 const morgan = require('morgan')
 const cors = require('cors')
+require('dotenv').config()
+const phoneBooks = require('./models/phonebook')
 
 const app = express()
 
@@ -41,7 +43,9 @@ let phonesBook = [
 ]
 
 app.get('/api/phonebook', morgan('common'), (request, response)=>{
-    response.json(phonesBook)
+  phoneBooks.find({}).then(books => {
+    response.json(books)
+  })
 })
 
 
@@ -51,21 +55,23 @@ app.get('/api/info', (request, response)=>{
 })
 
 app.get('/api/phonebook/:id', (request, response)=>{
-    const id = Number(request.params.id)
-    console.log(id)
-    const phonebook = phonesBook.find(phone => phone.id === id)
-    if(phonebook){
-      response.json(phonebook)
-    }else{
-        response.status(404).end()
+  phoneBooks.findById(request.params.id)
+  .then(note => {
+    if (note) {
+      response.json(note)
+    } else {
+      response.status(404).end()
     }
+  })
+  .catch(error => next(error))
   
 })
 
 app.delete('/api/phonebook/:id', (request, response) =>{
-    const id = Number(request.params.id)
-    phonesBook= phonesBook.filter(phone=> phone.id !== id)
+  phoneBooks.findByIdAndRemove(request.params.id)
+  .then(result => {
     response.status(204).end()
+   }).catch(error => next(error))
 })
 
 const generateId= () =>{
@@ -75,7 +81,7 @@ const generateId= () =>{
 
 app.post('/api/phonebook', (request, response)=>{
   const body = request.body
-  if(!body.name || !body.phone){
+  if(!body.name || !body.number){
       return response.status(400).json({
           error: 'Number or name missing'
       })
@@ -89,15 +95,49 @@ if(singlePhoneBook){
     }) 
 }
 
-const phonebook = {
+const phonebook = new phoneBooks({
     name: body.name,
-    phone: body.phone,
-    id: generateId(),
-  }
-phonesBook = phonesBook.concat(phonebook)
+    number: body.number,
 
-response.json(phonesBook)
+  })
+  phonebook.save().then(savedBook => {
+    response.json(savedBook)
+  })
 })
+
+app.put('/api/phonebook/:id', (request, response, next) => {
+  const body = request.body
+
+  const book = {
+    name: body.name,
+    number: body.number,
+  }
+
+  phoneBooks.findByIdAndUpdate(request.params.id, book, { new: true })
+    .then(updatedBook => {
+      response.json(updatedBook)
+    })
+    .catch(error => next(error))
+})
+
+const unknownEndpoint = (request, response) => {
+  response.status(404).send({ error: 'unknown endpoint' })
+}
+
+app.use(unknownEndpoint)
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message)
+
+  if (error.name === 'CastError') {
+    return response.status(400).send({ error: 'malformatted id' })
+  } 
+
+  next(error)
+}
+
+// this has to be the last loaded middleware.
+app.use(errorHandler)
 
 
 
